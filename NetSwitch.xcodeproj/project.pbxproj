@@ -1,0 +1,27 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA1111111111111111111111 /* NetSwitch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetSwitch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXNativeTarget section */
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+/* End PBXSourcesBuildPhase section */
+
+	};
+	rootObject = AA0000000000000000000000 /* Project object */;
+}
