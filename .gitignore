@@ -44,3 +44,4 @@ Distribution/
 *~
 .interrupt
 .DS_Store
+create_dmg.sh
