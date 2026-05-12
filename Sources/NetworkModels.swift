@@ -77,12 +77,80 @@ enum AppActionType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AppActionStage: String, Codable, CaseIterable, Identifiable {
+    case beforeNetwork
+    case afterNetwork
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .beforeNetwork:
+            return "网络前"
+        case .afterNetwork:
+            return "网络后"
+        }
+    }
+}
+
 struct AppActionConfig: Codable, Identifiable {
     let id: UUID
     var appName: String
     var bundleIdentifier: String?
     var appPath: String?
     var action: AppActionType
+    var stage: AppActionStage
+    var priority: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case appName
+        case bundleIdentifier
+        case appPath
+        case action
+        case stage
+        case priority
+    }
+
+    init(
+        id: UUID,
+        appName: String,
+        bundleIdentifier: String?,
+        appPath: String?,
+        action: AppActionType,
+        stage: AppActionStage? = nil,
+        priority: Int = 100
+    ) {
+        self.id = id
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.appPath = appPath
+        self.action = action
+        self.stage = stage ?? action.defaultStage
+        self.priority = priority
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        appName = try container.decode(String.self, forKey: .appName)
+        bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
+        appPath = try container.decodeIfPresent(String.self, forKey: .appPath)
+        action = try container.decode(AppActionType.self, forKey: .action)
+        stage = try container.decodeIfPresent(AppActionStage.self, forKey: .stage) ?? action.defaultStage
+        priority = try container.decodeIfPresent(Int.self, forKey: .priority) ?? 100
+    }
+}
+
+extension AppActionType {
+    var defaultStage: AppActionStage {
+        switch self {
+        case .open:
+            return .afterNetwork
+        case .quit:
+            return .beforeNetwork
+        }
+    }
 }
 
 struct AppConfig: Codable {

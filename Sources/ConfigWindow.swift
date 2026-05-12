@@ -66,6 +66,8 @@ struct ConfigView: View {
     let networkManager: NetworkManager
     @State private var selectedTab: String = "rules"
     @State private var selectedRuleIndex: Int = 0
+    @State private var showSaveToast = false
+    @State private var hideSaveToastWorkItem: DispatchWorkItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -170,14 +172,7 @@ struct ConfigView: View {
 
                 Button("保存") {
                     configManager.saveConfig()
-
-                    // 显示保存成功提示
-                    let alert = NSAlert()
-                    alert.messageText = "保存成功"
-                    alert.informativeText = "规则配置已保存"
-                    alert.addButton(withTitle: "确定")
-                    alert.alertStyle = .informational
-                    alert.runModal()
+                    showSaveSuccessToast()
                 }
                 .keyboardShortcut("s", modifiers: .command)
 
@@ -190,6 +185,14 @@ struct ConfigView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(minWidth: 500, minHeight: 400)
+        .overlay(alignment: .top) {
+            if showSaveToast {
+                SaveToastView()
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
         .onAppear {
             if !configManager.config.rules.isEmpty {
                 // 初始化为当前规则
@@ -212,6 +215,22 @@ struct ConfigView: View {
         selectedRuleIndex = configManager.config.rules.count - 1
     }
 
+    private func showSaveSuccessToast() {
+        hideSaveToastWorkItem?.cancel()
+
+        withAnimation(.easeOut(duration: 0.15)) {
+            showSaveToast = true
+        }
+
+        let workItem = DispatchWorkItem {
+            withAnimation(.easeIn(duration: 0.2)) {
+                showSaveToast = false
+            }
+        }
+        hideSaveToastWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: workItem)
+    }
+
     private func deleteSelectedRule() {
         guard configManager.config.rules.count > 1,
               selectedRuleIndex < configManager.config.rules.count else {
@@ -232,6 +251,23 @@ struct ConfigView: View {
         
         // 持久化删除操作
         configManager.saveConfig()
+    }
+}
+
+struct SaveToastView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+
+            Text("保存成功")
+                .font(.callout)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: Color.black.opacity(0.14), radius: 12, y: 4)
     }
 }
 
@@ -399,12 +435,17 @@ struct RuleEditView: View {
             appName: "",
             bundleIdentifier: nil,
             appPath: nil,
-            action: .open
+            action: .open,
+            priority: nextAppActionPriority()
         ))
     }
 
     private func deleteAppAction(id: UUID) {
         rule.appActions.removeAll { $0.id == id }
+    }
+
+    private func nextAppActionPriority() -> Int {
+        (rule.appActions.map(\.priority).max() ?? 0) + 10
     }
 }
 
@@ -415,7 +456,7 @@ struct AppActionEditRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
-                Picker("", selection: $action.action) {
+                Picker("", selection: actionTypeBinding) {
                     ForEach(AppActionType.allCases) { actionType in
                         Text(actionType.displayName).tag(actionType)
                     }
@@ -440,6 +481,21 @@ struct AppActionEditRow: View {
                 .help("删除")
             }
 
+            HStack(spacing: 12) {
+                Picker("阶段", selection: $action.stage) {
+                    ForEach(AppActionStage.allCases) { stage in
+                        Text(stage.displayName).tag(stage)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+
+                Stepper("优先级 \(action.priority)", value: $action.priority, in: 0...999, step: 10)
+                    .frame(width: 160, alignment: .leading)
+
+                Spacer()
+            }
+
             HStack {
                 Text("Bundle ID")
                     .foregroundColor(.secondary)
@@ -459,6 +515,16 @@ struct AppActionEditRow: View {
         .padding(10)
         .background(Color.gray.opacity(0.06))
         .cornerRadius(8)
+    }
+
+    private var actionTypeBinding: Binding<AppActionType> {
+        Binding(
+            get: { action.action },
+            set: { newValue in
+                action.action = newValue
+                action.stage = newValue.defaultStage
+            }
+        )
     }
 
     private func optionalStringBinding(_ keyPath: WritableKeyPath<AppActionConfig, String?>) -> Binding<String> {

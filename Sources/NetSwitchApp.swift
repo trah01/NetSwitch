@@ -24,6 +24,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastHotkeyModifiers: UInt?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyBundleApplicationIcon()
+
         // 检查是否已有实例在运行
         let runningApps = NSWorkspace.shared.runningApplications
         if let bundleID = Bundle.main.bundleIdentifier {
@@ -189,5 +191,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    private func applyBundleApplicationIcon() {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else {
+            return
+        }
+
+        NSApp.applicationIconImage = icon
     }
 }

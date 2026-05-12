@@ -1,7 +1,8 @@
 #!/bin/bash
+set -e
 
 APP_NAME="NetSwitch"
-VERSION="1.0"
+VERSION="1.0.2"
 DMG_NAME="${APP_NAME}_${VERSION}.dmg"
 APP_PATH="Distribution/${APP_NAME}.app"
 TEMP_DIR="temp_dmg"

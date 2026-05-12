@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 
 class NetworkManager {
+    private let ruleQueue = DispatchQueue(label: "com.netswitch.rule-queue")
     
     // 获取所有网络服务
     func getNetworkServices() -> [String] {
@@ -181,33 +182,48 @@ class NetworkManager {
     
     // 应用规则
     func applyRule(_ rule: Rule) {
-        print("应用规则: \(rule.name)")
-        
-        // 设置 WiFi 开关
-        setWiFiEnabled(rule.wifiEnabled)
-        
-        // 连接指定 WiFi
-        if let ssid = rule.wifiNetworkSSID, rule.wifiEnabled {
-            // 延迟一下再连接，确保 WiFi 已开启
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.connectToWiFi(ssid: ssid)
-            }
-        }
-        
-        // 设置各个网络服务的启用/禁用
-        // 如果 WiFi 正在启用，延迟执行以等待硬件就绪
-        let delay: Double = rule.wifiEnabled ? 0.5 : 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            for serviceConfig in rule.networkServices {
-                self.setNetworkServiceEnabled(serviceConfig.serviceName, enabled: serviceConfig.enabled)
-            }
-        }
+        let ruleSnapshot = rule
 
-        applyAppActions(rule.appActions)
+        ruleQueue.async {
+            print("应用规则: \(ruleSnapshot.name)")
+
+            self.applyAppActions(ruleSnapshot.appActions, stage: .beforeNetwork)
+            self.applyNetworkSettings(ruleSnapshot)
+            self.applyAppActions(ruleSnapshot.appActions, stage: .afterNetwork)
+        }
     }
 
-    private func applyAppActions(_ actions: [AppActionConfig]) {
-        for action in actions {
+    private func applyNetworkSettings(_ rule: Rule) {
+        setWiFiEnabled(rule.wifiEnabled)
+
+        if rule.wifiEnabled {
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+
+        for serviceConfig in rule.networkServices {
+            setNetworkServiceEnabled(serviceConfig.serviceName, enabled: serviceConfig.enabled)
+        }
+
+        guard let ssid = rule.wifiNetworkSSID, rule.wifiEnabled else {
+            return
+        }
+
+        Thread.sleep(forTimeInterval: 0.5)
+        connectToWiFi(ssid: ssid)
+    }
+
+    private func applyAppActions(_ actions: [AppActionConfig], stage: AppActionStage) {
+        let sortedActions = actions.enumerated()
+            .filter { $0.element.stage == stage }
+            .sorted {
+                if $0.element.priority == $1.element.priority {
+                    return $0.offset < $1.offset
+                }
+                return $0.element.priority < $1.element.priority
+            }
+            .map(\.element)
+
+        for action in sortedActions {
             switch action.action {
             case .open:
                 openApplication(action)
@@ -220,25 +236,33 @@ class NetworkManager {
     private func openApplication(_ action: AppActionConfig) {
         if let appPath = nonEmpty(action.appPath) {
             let appURL = URL(fileURLWithPath: appPath)
+            let semaphore = DispatchSemaphore(value: 0)
+
             NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { app, error in
                 if let error = error {
                     print("打开应用失败 \(action.displayTarget): \(error.localizedDescription)")
                 } else {
                     print("已打开应用: \(app?.localizedName ?? action.displayTarget)")
                 }
+                semaphore.signal()
             }
+            _ = semaphore.wait(timeout: .now() + 10)
             return
         }
 
         if let bundleIdentifier = nonEmpty(action.bundleIdentifier),
            let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            let semaphore = DispatchSemaphore(value: 0)
+
             NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { app, error in
                 if let error = error {
                     print("打开应用失败 \(action.displayTarget): \(error.localizedDescription)")
                 } else {
                     print("已打开应用: \(app?.localizedName ?? action.displayTarget)")
                 }
+                semaphore.signal()
             }
+            _ = semaphore.wait(timeout: .now() + 10)
             return
         }
 
@@ -285,12 +309,21 @@ class NetworkManager {
             let didRequestQuit = app.terminate()
             print("\(didRequestQuit ? "已请求关闭" : "关闭请求失败"): \(app.localizedName ?? action.displayTarget)")
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                if !app.isTerminated {
-                    let didForceQuit = app.forceTerminate()
-                    print("\(didForceQuit ? "已强制关闭" : "强制关闭失败"): \(app.localizedName ?? action.displayTarget)")
-                }
+            waitForTermination(of: app, timeout: 5.0)
+
+            if !app.isTerminated {
+                let didForceQuit = app.forceTerminate()
+                print("\(didForceQuit ? "已强制关闭" : "强制关闭失败"): \(app.localizedName ?? action.displayTarget)")
+                waitForTermination(of: app, timeout: 2.0)
             }
+        }
+    }
+
+    private func waitForTermination(of app: NSRunningApplication, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while !app.isTerminated && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
         }
     }
 

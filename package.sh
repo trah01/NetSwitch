@@ -1,8 +1,10 @@
 #!/bin/bash
+set -e
 
 # 设置变量
 APP_NAME="NetSwitch"
 BUNDLE_ID="com.netswitch.app"
+VERSION="1.0.2"
 DIST_DIR="Distribution"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 
@@ -41,7 +43,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
     <key>CFBundleExecutable</key>
     <string>$APP_NAME</string>
     <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
+    <string>AppIcon.icns</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -51,9 +53,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -66,13 +68,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# 6. 代码签名 (Ad-hoc)
-echo "正在进行代码签名..."
-codesign --force --deep --sign - "$APP_BUNDLE"
-
-# 7. 清理扩展属性 (解决权限问题)
+# 6. 清理扩展属性，避免签名时写入 Finder metadata/resource fork
 echo "清理扩展属性..."
 xattr -cr "$APP_BUNDLE"
+
+# 7. 代码签名 (Ad-hoc)
+echo "正在进行代码签名..."
+codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "======================================"
 echo "打包成功！"
