@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var configManager = ConfigManager()
     var hotkeyManager: HotkeyManager?
     private var cancellables = Set<AnyCancellable>()
+    private var lastHotkeyEnabled: Bool?
     private var lastHotkeyKeyCode: Int?
     private var lastHotkeyModifiers: UInt?
     
@@ -65,8 +66,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.updateStatusItemIcon(config: newConfig)
                 
                 // 仅在快捷键配置真正发生变化时才重新注册
-                if newConfig.hotkeyKeyCode != self?.lastHotkeyKeyCode || 
+                if newConfig.hotkeyEnabled != self?.lastHotkeyEnabled ||
+                   newConfig.hotkeyKeyCode != self?.lastHotkeyKeyCode || 
                    newConfig.hotkeyModifiers != self?.lastHotkeyModifiers {
+                    self?.lastHotkeyEnabled = newConfig.hotkeyEnabled
                     self?.lastHotkeyKeyCode = newConfig.hotkeyKeyCode
                     self?.lastHotkeyModifiers = newConfig.hotkeyModifiers
                     self?.hotkeyManager?.registerHotkeys()

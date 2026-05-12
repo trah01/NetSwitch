@@ -14,9 +14,15 @@ class HotkeyManager {
     
     func registerHotkeys() {
         unregisterHotkey()
-        
-        let keyCode = configManager.config.hotkeyKeyCode ?? 1
-        let modifiers = NSEvent.ModifierFlags(rawValue: configManager.config.hotkeyModifiers ?? 4456448)
+
+        guard configManager.config.hotkeyEnabled,
+              let keyCode = configManager.config.hotkeyKeyCode,
+              let modifiersRaw = configManager.config.hotkeyModifiers else {
+            print("全局快捷键已关闭")
+            return
+        }
+
+        let modifiers = NSEvent.ModifierFlags(rawValue: modifiersRaw)
         
         // 静默检查辅助功能权限（绝不弹窗，用户可在设置中手动授权）
         if !AXIsProcessTrusted() {

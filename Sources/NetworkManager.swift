@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 class NetworkManager {
@@ -201,5 +202,164 @@ class NetworkManager {
                 self.setNetworkServiceEnabled(serviceConfig.serviceName, enabled: serviceConfig.enabled)
             }
         }
+
+        applyAppActions(rule.appActions)
+    }
+
+    private func applyAppActions(_ actions: [AppActionConfig]) {
+        for action in actions {
+            switch action.action {
+            case .open:
+                openApplication(action)
+            case .quit:
+                quitApplication(action)
+            }
+        }
+    }
+
+    private func openApplication(_ action: AppActionConfig) {
+        if let appPath = nonEmpty(action.appPath) {
+            let appURL = URL(fileURLWithPath: appPath)
+            NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { app, error in
+                if let error = error {
+                    print("打开应用失败 \(action.displayTarget): \(error.localizedDescription)")
+                } else {
+                    print("已打开应用: \(app?.localizedName ?? action.displayTarget)")
+                }
+            }
+            return
+        }
+
+        if let bundleIdentifier = nonEmpty(action.bundleIdentifier),
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { app, error in
+                if let error = error {
+                    print("打开应用失败 \(action.displayTarget): \(error.localizedDescription)")
+                } else {
+                    print("已打开应用: \(app?.localizedName ?? action.displayTarget)")
+                }
+            }
+            return
+        }
+
+        guard let appName = nonEmpty(action.appName) else {
+            print("跳过打开应用: 未配置应用名称")
+            return
+        }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-a", appName]
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus == 0 {
+                print("已打开应用: \(appName)")
+            } else {
+                print("打开应用失败: \(appName)")
+            }
+        } catch {
+            print("打开应用失败 \(appName): \(error)")
+        }
+    }
+
+    private func quitApplication(_ action: AppActionConfig) {
+        let apps = matchingRunningApplications(for: action)
+
+        if apps.isEmpty {
+            if let appName = nonEmpty(action.appName) {
+                quitApplicationByAppleScript(appName: appName)
+            } else {
+                print("跳过关闭应用: 未找到运行中的 \(action.displayTarget)")
+            }
+            return
+        }
+
+        for app in apps {
+            if app.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+                print("跳过关闭当前应用: \(app.localizedName ?? action.displayTarget)")
+                continue
+            }
+
+            let didRequestQuit = app.terminate()
+            print("\(didRequestQuit ? "已请求关闭" : "关闭请求失败"): \(app.localizedName ?? action.displayTarget)")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                if !app.isTerminated {
+                    let didForceQuit = app.forceTerminate()
+                    print("\(didForceQuit ? "已强制关闭" : "强制关闭失败"): \(app.localizedName ?? action.displayTarget)")
+                }
+            }
+        }
+    }
+
+    private func matchingRunningApplications(for action: AppActionConfig) -> [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications.filter { app in
+            if let bundleIdentifier = nonEmpty(action.bundleIdentifier),
+               app.bundleIdentifier == bundleIdentifier {
+                return true
+            }
+
+            if let appPath = nonEmpty(action.appPath),
+               app.bundleURL?.standardizedFileURL.path == URL(fileURLWithPath: appPath).standardizedFileURL.path {
+                return true
+            }
+
+            if let appName = nonEmpty(action.appName),
+               let localizedName = app.localizedName,
+               localizedName.compare(appName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame {
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private func quitApplicationByAppleScript(appName: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \(appleScriptStringLiteral(appName)) to quit"]
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus == 0 {
+                print("已请求关闭应用: \(appName)")
+            } else {
+                print("关闭应用失败: \(appName)")
+            }
+        } catch {
+            print("关闭应用失败 \(appName): \(error)")
+        }
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private func appleScriptStringLiteral(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+}
+
+private extension AppActionConfig {
+    var displayTarget: String {
+        if !appName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return appName
+        }
+        if let bundleIdentifier, !bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return bundleIdentifier
+        }
+        if let appPath, !appPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
+        }
+        return "未命名应用"
     }
 }

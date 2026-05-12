@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 import UserNotifications
+import UniformTypeIdentifiers
 
 class ConfigWindowController: NSObject, NSWindowDelegate {
     static let shared = ConfigWindowController()
@@ -112,7 +113,9 @@ struct ConfigView: View {
                                     }
                                     Text(configManager.config.rules[index].name)
                                         .padding(.vertical, 4)
+                                    Spacer()
                                 }
+                                .contentShape(Rectangle())
                                 .tag(index)
                                 .onTapGesture {
                                     selectedTab = "rules"
@@ -126,8 +129,10 @@ struct ConfigView: View {
                             HStack {
                                 Image(systemName: "gearshape")
                                 Text("通用设置")
+                                Spacer()
                             }
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedTab = "general"
                             }
@@ -294,6 +299,42 @@ struct RuleEditView: View {
                         }
                     }
                 }
+
+                Divider()
+
+                // 应用控制
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("应用控制")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+
+                        Button(action: {
+                            addAppAction()
+                        }) {
+                            Label("添加", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+
+                    if rule.appActions.isEmpty {
+                        Text("未配置应用动作")
+                            .foregroundColor(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach($rule.appActions) { $appAction in
+                                AppActionEditRow(
+                                    action: $appAction,
+                                    onDelete: {
+                                        deleteAppAction(id: appAction.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
                 
                 if let error = showError {
                     Text(error)
@@ -351,6 +392,100 @@ struct RuleEditView: View {
             showError = "未检测到网络服务，请检查系统网络设置"
         }
     }
+
+    private func addAppAction() {
+        rule.appActions.append(AppActionConfig(
+            id: UUID(),
+            appName: "",
+            bundleIdentifier: nil,
+            appPath: nil,
+            action: .open
+        ))
+    }
+
+    private func deleteAppAction(id: UUID) {
+        rule.appActions.removeAll { $0.id == id }
+    }
+}
+
+struct AppActionEditRow: View {
+    @Binding var action: AppActionConfig
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Picker("", selection: $action.action) {
+                    ForEach(AppActionType.allCases) { actionType in
+                        Text(actionType.displayName).tag(actionType)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 120)
+
+                TextField("应用名称，如 Clash", text: $action.appName)
+                    .textFieldStyle(.roundedBorder)
+
+                Button(action: selectApplication) {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.borderless)
+                .help("选择应用")
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundColor(.red)
+                .help("删除")
+            }
+
+            HStack {
+                Text("Bundle ID")
+                    .foregroundColor(.secondary)
+                    .frame(width: 72, alignment: .leading)
+                TextField("可选", text: optionalStringBinding(\.bundleIdentifier))
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Text("路径")
+                    .foregroundColor(.secondary)
+                    .frame(width: 72, alignment: .leading)
+                TextField("可选，选择应用后自动填入", text: optionalStringBinding(\.appPath))
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.06))
+        .cornerRadius(8)
+    }
+
+    private func optionalStringBinding(_ keyPath: WritableKeyPath<AppActionConfig, String?>) -> Binding<String> {
+        Binding(
+            get: { action[keyPath: keyPath] ?? "" },
+            set: { action[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private func selectApplication() {
+        let panel = NSOpenPanel()
+        panel.title = "选择应用"
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            let bundle = Bundle(url: url)
+            action.appPath = url.path
+            action.bundleIdentifier = bundle?.bundleIdentifier
+
+            let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+            action.appName = displayName ?? bundleName ?? url.deletingPathExtension().lastPathComponent
+        }
+    }
 }
 
 struct GeneralSettingsView: View {
@@ -379,37 +514,58 @@ struct GeneralSettingsView: View {
                 
                 Section(header: Text("快捷键设置").font(.headline)) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("点击下方按钮并输入快捷键来更改（用于循环切换规则）")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Toggle("启用全局快捷键", isOn: Binding(
+                            get: { isHotkeyEnabled },
+                            set: { newValue in
+                                if newValue {
+                                    configManager.config.hotkeyEnabled = true
+                                    setDefaultHotkey()
+                                } else {
+                                    isRecordingHotkey = false
+                                    configManager.config.hotkeyEnabled = false
+                                    configManager.config.hotkeyKeyCode = nil
+                                    configManager.config.hotkeyModifiers = nil
+                                }
+                            }
+                        ))
+                        .toggleStyle(.switch)
                         
-                        HStack {
-                            Button(action: {
-                                isRecordingHotkey.toggle()
-                            }) {
-                                HStack {
-                                    Image(systemName: isRecordingHotkey ? "record.circle" : "keyboard")
-                                    Text(isRecordingHotkey ? "请按键..." : hotkeyString)
-                                }
-                                .frame(minWidth: 120)
-                                .padding(8)
-                                .background(isRecordingHotkey ? Color.red.opacity(0.1) : Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(isRecordingHotkey ? Color.red : Color.gray.opacity(0.5), lineWidth: 1)
-                            )
-                            
-                            if !isRecordingHotkey {
-                                Button("重置") {
-                                    configManager.config.hotkeyKeyCode = 1
-                                    configManager.config.hotkeyModifiers = 4456448
-                                }
-                                .buttonStyle(.borderless)
+                        if isHotkeyEnabled {
+                            Text("点击下方按钮并输入快捷键来更改（用于循环切换规则）")
                                 .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            HStack {
+                                Button(action: {
+                                    isRecordingHotkey.toggle()
+                                }) {
+                                    HStack {
+                                        Image(systemName: isRecordingHotkey ? "record.circle" : "keyboard")
+                                        Text(isRecordingHotkey ? "请按键..." : hotkeyString)
+                                    }
+                                    .frame(minWidth: 120)
+                                    .padding(8)
+                                    .background(isRecordingHotkey ? Color.red.opacity(0.1) : Color.gray.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(.plain)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(isRecordingHotkey ? Color.red : Color.gray.opacity(0.5), lineWidth: 1)
+                                )
+                                
+                                if !isRecordingHotkey {
+                                    Button("设为默认") {
+                                        setDefaultHotkey()
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
+                                }
                             }
+                        } else {
+                            Text("关闭后不会监听全局按键，也不需要辅助功能权限。")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(.vertical, 8)
@@ -418,31 +574,44 @@ struct GeneralSettingsView: View {
             
             Spacer()
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("关于全局快捷键")
-                    .font(.headline)
-                Text("全局快捷键需要“辅助功能”权限才能生效。如果快捷键没反应，请在 [系统设置 -> 隐私与安全性 -> 辅助功能] 中确保 NetSwitch 已启用。")
+            if isHotkeyEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("关于全局快捷键")
+                        .font(.headline)
+                    Text("全局快捷键需要“辅助功能”权限才能生效。如果快捷键没反应，请在 [系统设置 -> 隐私与安全性 -> 辅助功能] 中确保 NetSwitch 已启用。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button("打开辅助功能设置") {
+                        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                        NSWorkspace.shared.open(url)
+                    }
+                    .buttonStyle(.link)
                     .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Button("打开辅助功能设置") {
-                    let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                    NSWorkspace.shared.open(url)
                 }
-                .buttonStyle(.link)
-                .font(.caption)
+                .padding()
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
             }
-            .padding()
-            .background(Color.gray.opacity(0.05))
-            .cornerRadius(8)
         }
         .background(
             KeyEventHandling(isRecording: $isRecordingHotkey) { keyCode, modifiers in
+                configManager.config.hotkeyEnabled = true
                 configManager.config.hotkeyKeyCode = Int(keyCode)
                 configManager.config.hotkeyModifiers = modifiers.rawValue
                 isRecordingHotkey = false
             }
         )
+    }
+
+    private var isHotkeyEnabled: Bool {
+        configManager.config.hotkeyEnabled
+    }
+
+    private func setDefaultHotkey() {
+        configManager.config.hotkeyEnabled = true
+        configManager.config.hotkeyKeyCode = 1
+        configManager.config.hotkeyModifiers = 4456448
     }
     
     private var hotkeyString: String {

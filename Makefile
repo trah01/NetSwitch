@@ -9,6 +9,7 @@ build:
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources
 	@cp Info.plist $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
+	@cp net.icns $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources/AppIcon.icns
 	@swiftc -target arm64-apple-macos12 \
 		-sdk $$(xcrun --show-sdk-path) \
 		-framework Cocoa \
