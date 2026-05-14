@@ -98,13 +98,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             menu.addItem(NSMenuItem.separator())
             
-            // 下一个规则快捷切换
-            let switchItem = NSMenuItem(title: "切换到 \(configManager.getNextRuleName())", action: #selector(switchRule), keyEquivalent: "")
-            switchItem.target = self
-            menu.addItem(switchItem)
-            
-            menu.addItem(NSMenuItem.separator())
-            
             // 所有规则列表
             for rule in configManager.config.rules {
                 let item = NSMenuItem(title: rule.name, action: #selector(applyRule(_:)), keyEquivalent: "")
@@ -138,15 +131,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 直接弹回菜单
         statusItem.popUpMenu(menu)
-    }
-    
-    @objc func switchRule() {
-        guard configManager.getCurrentRule() != nil else { return }
-        configManager.switchToNextRule()
-        if let rule = configManager.getCurrentRule() {
-            networkManager.applyRule(rule)
-        }
-        updateStatusItemIcon()
     }
     
     @objc func applyRule(_ sender: Any) {

@@ -330,8 +330,10 @@ struct RuleEditView: View {
                         Text("未找到网络服务，请点击刷新")
                             .foregroundColor(.secondary)
                     } else {
-                        ForEach(Array(availableServices.enumerated()), id: \.element) { index, serviceName in
-                            Toggle(serviceName, isOn: networkServiceBinding(for: serviceName))
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(availableServices, id: \.self) { serviceName in
+                                NetworkServiceEditRow(config: networkServiceConfigBinding(for: serviceName))
+                            }
                         }
                     }
                 }
@@ -387,23 +389,23 @@ struct RuleEditView: View {
         }
     }
     
-    private func networkServiceBinding(for serviceName: String) -> Binding<Bool> {
+    private func networkServiceConfigBinding(for serviceName: String) -> Binding<NetworkServiceConfig> {
         Binding(
             get: {
                 if let config = rule.networkServices.first(where: { $0.serviceName == serviceName }) {
-                    return config.enabled
+                    return config
                 }
-                return true
+                return NetworkServiceConfig(
+                    id: UUID(),
+                    serviceName: serviceName,
+                    enabled: true
+                )
             },
             set: { newValue in
                 if let index = rule.networkServices.firstIndex(where: { $0.serviceName == serviceName }) {
-                    rule.networkServices[index].enabled = newValue
+                    rule.networkServices[index] = newValue
                 } else {
-                    rule.networkServices.append(NetworkServiceConfig(
-                        id: UUID(),
-                        serviceName: serviceName,
-                        enabled: newValue
-                    ))
+                    rule.networkServices.append(newValue)
                 }
             }
         )
@@ -446,6 +448,75 @@ struct RuleEditView: View {
 
     private func nextAppActionPriority() -> Int {
         (rule.appActions.map(\.priority).max() ?? 0) + 10
+    }
+}
+
+struct NetworkServiceEditRow: View {
+    @Binding var config: NetworkServiceConfig
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(config.serviceName, isOn: $config.enabled)
+                .font(.body)
+
+            if config.enabled {
+                HStack(spacing: 12) {
+                    Picker("IP", selection: $config.ipMode) {
+                        ForEach(NetworkIPMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+
+                    Picker("DNS", selection: $config.dnsMode) {
+                        ForEach(NetworkDNSMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                }
+
+                if config.ipMode == .manual {
+                    VStack(alignment: .leading, spacing: 8) {
+                        fieldRow("IP 地址", placeholder: "192.168.1.100", text: optionalStringBinding(\.ipAddress))
+                        fieldRow("子网掩码", placeholder: "255.255.255.0", text: optionalStringBinding(\.subnetMask))
+                        fieldRow("路由器", placeholder: "192.168.1.1", text: optionalStringBinding(\.router))
+                    }
+                }
+
+                if config.dnsMode == .manual {
+                    HStack {
+                        Text("DNS")
+                            .foregroundColor(.secondary)
+                            .frame(width: 64, alignment: .leading)
+                        TextField("8.8.8.8, 1.1.1.1", text: optionalStringBinding(\.dnsServers))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.06))
+        .cornerRadius(8)
+    }
+
+    private func optionalStringBinding(_ keyPath: WritableKeyPath<NetworkServiceConfig, String?>) -> Binding<String> {
+        Binding(
+            get: { config[keyPath: keyPath] ?? "" },
+            set: { config[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private func fieldRow(_ label: String, placeholder: String, text: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+                .frame(width: 64, alignment: .leading)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }
 
@@ -492,6 +563,10 @@ struct AppActionEditRow: View {
 
                 Stepper("优先级 \(action.priority)", value: $action.priority, in: 0...999, step: 10)
                     .frame(width: 160, alignment: .leading)
+
+                Text("数值越小越先执行")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
 
                 Spacer()
             }

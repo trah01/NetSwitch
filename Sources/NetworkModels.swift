@@ -59,6 +59,97 @@ struct NetworkServiceConfig: Codable, Identifiable {
     let id: UUID
     var serviceName: String  // 如 "Wi-Fi", "Thunderbolt Ethernet", "USB 10/100/1000 LAN"
     var enabled: Bool
+    var ipMode: NetworkIPMode
+    var ipAddress: String?
+    var subnetMask: String?
+    var router: String?
+    var dnsMode: NetworkDNSMode
+    var dnsServers: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case serviceName
+        case enabled
+        case ipMode
+        case ipAddress
+        case subnetMask
+        case router
+        case dnsMode
+        case dnsServers
+    }
+
+    init(
+        id: UUID,
+        serviceName: String,
+        enabled: Bool,
+        ipMode: NetworkIPMode = .unchanged,
+        ipAddress: String? = nil,
+        subnetMask: String? = nil,
+        router: String? = nil,
+        dnsMode: NetworkDNSMode = .unchanged,
+        dnsServers: String? = nil
+    ) {
+        self.id = id
+        self.serviceName = serviceName
+        self.enabled = enabled
+        self.ipMode = ipMode
+        self.ipAddress = ipAddress
+        self.subnetMask = subnetMask
+        self.router = router
+        self.dnsMode = dnsMode
+        self.dnsServers = dnsServers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        serviceName = try container.decode(String.self, forKey: .serviceName)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        ipMode = try container.decodeIfPresent(NetworkIPMode.self, forKey: .ipMode) ?? .unchanged
+        ipAddress = try container.decodeIfPresent(String.self, forKey: .ipAddress)
+        subnetMask = try container.decodeIfPresent(String.self, forKey: .subnetMask)
+        router = try container.decodeIfPresent(String.self, forKey: .router)
+        dnsMode = try container.decodeIfPresent(NetworkDNSMode.self, forKey: .dnsMode) ?? .unchanged
+        dnsServers = try container.decodeIfPresent(String.self, forKey: .dnsServers)
+    }
+}
+
+enum NetworkIPMode: String, Codable, CaseIterable, Identifiable {
+    case unchanged
+    case dhcp
+    case manual
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .unchanged:
+            return "不更改"
+        case .dhcp:
+            return "DHCP"
+        case .manual:
+            return "手动"
+        }
+    }
+}
+
+enum NetworkDNSMode: String, Codable, CaseIterable, Identifiable {
+    case unchanged
+    case automatic
+    case manual
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .unchanged:
+            return "不更改"
+        case .automatic:
+            return "自动"
+        case .manual:
+            return "手动"
+        }
+    }
 }
 
 enum AppActionType: String, Codable, CaseIterable, Identifiable {

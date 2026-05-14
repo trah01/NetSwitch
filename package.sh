@@ -4,7 +4,7 @@ set -e
 # 设置变量
 APP_NAME="NetSwitch"
 BUNDLE_ID="com.netswitch.app"
-VERSION="1.0.2"
+VERSION="0.1.3"
 DIST_DIR="Distribution"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 

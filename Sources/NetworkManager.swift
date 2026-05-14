@@ -201,7 +201,7 @@ class NetworkManager {
         }
 
         for serviceConfig in rule.networkServices {
-            setNetworkServiceEnabled(serviceConfig.serviceName, enabled: serviceConfig.enabled)
+            applyNetworkServiceSettings(serviceConfig)
         }
 
         guard let ssid = rule.wifiNetworkSSID, rule.wifiEnabled else {
@@ -210,6 +210,102 @@ class NetworkManager {
 
         Thread.sleep(forTimeInterval: 0.5)
         connectToWiFi(ssid: ssid)
+    }
+
+    private func applyNetworkServiceSettings(_ serviceConfig: NetworkServiceConfig) {
+        setNetworkServiceEnabled(serviceConfig.serviceName, enabled: serviceConfig.enabled)
+
+        guard serviceConfig.enabled else {
+            return
+        }
+
+        applyIPConfiguration(serviceConfig)
+        applyDNSConfiguration(serviceConfig)
+    }
+
+    private func applyIPConfiguration(_ serviceConfig: NetworkServiceConfig) {
+        switch serviceConfig.ipMode {
+        case .unchanged:
+            return
+        case .dhcp:
+            runNetworkSetup(
+                arguments: ["-setdhcp", serviceConfig.serviceName],
+                successMessage: "已设置 \(serviceConfig.serviceName) 为 DHCP",
+                failureMessage: "设置 \(serviceConfig.serviceName) DHCP 失败"
+            )
+        case .manual:
+            guard let ipAddress = nonEmpty(serviceConfig.ipAddress),
+                  let subnetMask = nonEmpty(serviceConfig.subnetMask),
+                  let router = nonEmpty(serviceConfig.router) else {
+                print("跳过 \(serviceConfig.serviceName) 手动 IP: 配置不完整")
+                return
+            }
+
+            runNetworkSetup(
+                arguments: ["-setmanual", serviceConfig.serviceName, ipAddress, subnetMask, router],
+                successMessage: "已设置 \(serviceConfig.serviceName) 手动 IP",
+                failureMessage: "设置 \(serviceConfig.serviceName) 手动 IP 失败"
+            )
+        }
+    }
+
+    private func applyDNSConfiguration(_ serviceConfig: NetworkServiceConfig) {
+        switch serviceConfig.dnsMode {
+        case .unchanged:
+            return
+        case .automatic:
+            runNetworkSetup(
+                arguments: ["-setdnsservers", serviceConfig.serviceName, "Empty"],
+                successMessage: "已清空 \(serviceConfig.serviceName) 自定义 DNS",
+                failureMessage: "清空 \(serviceConfig.serviceName) DNS 失败"
+            )
+        case .manual:
+            let dnsServers = parseDNSServers(serviceConfig.dnsServers)
+            guard !dnsServers.isEmpty else {
+                print("跳过 \(serviceConfig.serviceName) 手动 DNS: 未填写 DNS 服务器")
+                return
+            }
+
+            runNetworkSetup(
+                arguments: ["-setdnsservers", serviceConfig.serviceName] + dnsServers,
+                successMessage: "已设置 \(serviceConfig.serviceName) DNS: \(dnsServers.joined(separator: ", "))",
+                failureMessage: "设置 \(serviceConfig.serviceName) DNS 失败"
+            )
+        }
+    }
+
+    private func runNetworkSetup(arguments: [String], successMessage: String, failureMessage: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        task.arguments = arguments
+
+        let pipe = Pipe()
+        task.standardError = pipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            if task.terminationStatus == 0 {
+                print(successMessage)
+            } else {
+                let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+                let errorOutput = String(data: errorData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                print(errorOutput.isEmpty ? failureMessage : "\(failureMessage): \(errorOutput)")
+            }
+        } catch {
+            print("\(failureMessage): \(error)")
+        }
+    }
+
+    private func parseDNSServers(_ value: String?) -> [String] {
+        guard let value else { return [] }
+
+        return value
+            .components(separatedBy: CharacterSet(charactersIn: ",，;； \n\t"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func applyAppActions(_ actions: [AppActionConfig], stage: AppActionStage) {
