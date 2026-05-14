@@ -1,7 +1,8 @@
 # NetSwitch - macOS 网络规则切换工具
 
-一个简洁的 macOS 菜单栏应用，用于快速切换网络配置和优先级开关应用规则。
-<img width="1392" height="1262" alt="image" src="https://github.com/user-attachments/assets/68d0ee3f-1fa0-4efc-a099-35b9fc12f122" />
+一个简洁的 macOS 菜单栏应用，用于快速切换网络配置，允许自定义IP和DNS及优先级开关应用。
+<img width="1672" height="1422" alt="Screenshot 2026-05-14 at 10-41-01" src="https://github.com/user-attachments/assets/d54d099b-62ba-43ce-bf86-83360081c023" />
+
 
 
 ## 功能
@@ -11,6 +12,7 @@
   - WiFi 开关
   - 自动连接指定 WiFi 网络
   - 启用/禁用特定网卡（如以太网、USB 网卡等）
+  - 是否配置IP或DNS
   - 打开/关闭指定应用（如 Clash），允许配置优先级
 - 可选全局快捷键切换（默认关闭）
 - 规则配置界面
